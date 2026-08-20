@@ -1,0 +1,15 @@
+# Python & Environments
+__pycache__/
+*.pyc
+venv/
+env/
+.env
+
+# ML Data & Artifacts
+data_pipeline/data/
+*.csv
+*.json
+*.pkl
+
+# OS Files
+.DS_Store
