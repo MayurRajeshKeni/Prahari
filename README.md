@@ -1,0 +1,1 @@
+Project Prahari is a high-performance, distributed API gateway designed for efficient traffic routing and system monitoring. Built with a scalable architecture, it features a memory-optimized data pipeline that utilizes chunked Pandas processing for safe, concurrent log ingestion without overloading system RAM.
