@@ -2,9 +2,10 @@
 
 ## Phase 1: Data Engineering & ML Pipeline
 **Goal:** Process raw server logs and train the abuse detection model.
-*   [ ] Set up Pandas script to read raw web logs using chunking to prevent memory bloat.
-*   [ ] Clean data (handle missing values, drop low-variance columns).
-*   [ ] Extract high-variance features (e.g., request velocity, URL path patterns, User-Agent anomalies).
+*   [x] Set up Pandas script to read raw web logs using chunking to prevent memory bloat.
+*   [x] Clean data (handle missing values, drop low-variance columns).
+*   [x] Extract high-variance features (e.g., request velocity, URL path patterns, User-Agent anomalies).
+*   [x] **Extended parser to support Apache access, Apache error, and Linux syslog formats**
 *   [ ] Train an XGBoost baseline model on the processed dataset.
 *   [ ] Export the trained model as a `.json` or `.pkl` artifact.
 

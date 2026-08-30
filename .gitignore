@@ -4,12 +4,36 @@ __pycache__/
 venv/
 env/
 .env
+.venv/
 
 # ML Data & Artifacts
 data_pipeline/data/
+data/raw/
+data/processed/
 *.csv
 *.json
 *.pkl
+*.joblib
+
+# Model artifacts
+*.model
+*.bin
 
 # OS Files
 .DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# Coverage
+.coverage
+htmlcov/
+.pytest_cache/
