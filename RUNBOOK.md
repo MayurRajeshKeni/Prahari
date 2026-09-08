@@ -15,7 +15,7 @@
 
 ```bash
 # Clone repo
-git clone <your-repo-url>
+git clone https://github.com/MayurRajeshKeni/Prahari
 cd Prahari
 
 # Activate virtual environment
@@ -116,17 +116,51 @@ python data_pipeline/log_parser.py data/raw/access.log data/processed/access_fea
 
 ---
 
+---
+
+## Model Training & Artifact Export
+
+Once `data/processed_access.csv` (or any processed feature CSV) has been generated:
+
+```bash
+python data_pipeline/train_model.py data/processed_access.csv --output-dir models
+```
+
+### Artifacts Exported
+* `models/xgboost_abuse_model.json` — Native XGBoost tree serialization for fast runtime loading.
+* `models/xgboost_abuse_model.pkl` — Scikit-learn / joblib model object.
+* `models/feature_metadata.json` — Feature names and runtime column order for Phase 3 Gateway inference.
+* `models/evaluation_metrics.json` — Precision, recall, F1, ROC-AUC, and feature importances.
+
+---
+
+## Synthetic Data Generation (Testing)
+
+To generate synthetic Apache access logs with realistic human traffic vs. rapid bot/scraper bursts:
+
+```bash
+python data_pipeline/generate_sample_logs.py
+```
+
+---
+
 ## Project Structure
 
 ```
 Prahari/
 ├── .venv/                 # Virtual environment (gitignored)
 ├── data/
-│   ├── raw/               # Place input logs here
-│   └── processed/         # Output CSV features here
+│   ├── raw/               # Input raw logs (Apache, Linux)
+│   └── processed_access.csv # Processed feature dataset
 ├── data_pipeline/
-│   ├── log_parser.py      # Main parser (this runbook)
-│   └── __pycache__/
+│   ├── log_parser.py      # Multi-format streaming log parser
+│   ├── generate_sample_logs.py # Synthetic traffic generator
+│   └── train_model.py     # XGBoost classifier training & export
+├── models/
+│   ├── xgboost_abuse_model.json
+│   ├── xgboost_abuse_model.pkl
+│   ├── feature_metadata.json
+│   └── evaluation_metrics.json
 ├── requirements.txt
 ├── .gitignore
 ├── Memory.md
@@ -134,12 +168,3 @@ Prahari/
 ├── PRD.md
 └── RUNBOOK.md             # This file
 ```
-
----
-
-## Next Steps (Phase 1)
-
-After generating feature CSVs:
-1. Implement `data_pipeline/train_model.py` — XGBoost baseline training
-2. Export model artifact (`.pkl` or `.json`)
-3. Proceed to Phase 2: FastAPI gateway + Redis rate limiter

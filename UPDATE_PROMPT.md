@@ -15,7 +15,7 @@ Read the current `Memory.md` and update it with:
 ---
 
 ### Task 2: Generate `DEVLOG.md` (Session Learning Breakdown)
-Create or update a file named `DEVLOG.md` explaining today's progress in a clean, concise, and easy-to-digest format suitable for semester project reviews and technical interviews.
+Create or update/add a file named `DEVLOG.md` explaining today's progress in a clean, concise, and easy-to-digest format suitable for semester project reviews and technical interviews.
 
 Structure `DEVLOG.md` with the following sections:
 
@@ -39,37 +39,32 @@ Structure `DEVLOG.md` with the following sections:
 ## Current Session Requirements Summary
 
 ### Completed This Session:
-1. **Extended `data_pipeline/log_parser.py`** to support 3 log formats via `--type` CLI argument:
-   - `apache_access` — Combined log format (original)
-   - `apache_error` — Apache error logs with level/message parsing
-   - `linux` — Linux syslog (RFC 3164) with service/message parsing
+1. **Multi-Format Log Parser Verification:**
+   - Tested `data_pipeline/log_parser.py` on Apache error logs, Linux syslogs, and Apache access logs.
+   - Refined non-capturing regex pattern and global variance column cleaning.
 
-2. **Added regex patterns & feature extraction** for each format:
-   - Apache error: `is_error`, `is_warn`, `is_notice`, `msg_length`, `has_exception`
-   - Linux: `is_kernel`, `msg_length`, `has_hardware`
+2. **Synthetic Data Generator (`data_pipeline/generate_sample_logs.py`):**
+   - Implemented generator to produce 35,000 realistic HTTP requests distinguishing human browsing from rapid bot/scraper bursts.
 
-3. **Created `requirements.txt`** with all project dependencies:
-   - `pandas>=2.0.0`, `xgboost>=2.0.0`, `scikit-learn>=1.3.0`, `numpy>=1.24.0`
-   - `fastapi>=0.104.0`, `uvicorn>=0.24.0`, `redis>=5.0.0`, `python-dotenv>=1.0.0`
-   - `pytest>=7.4.0`, `pytest-asyncio>=0.21.0`
+3. **XGBoost Abuse Detection Model (`data_pipeline/train_model.py`):**
+   - Built training pipeline with stratified train/test split, class-weight rebalancing, and evaluation metrics (ROC-AUC, Confusion Matrix, Feature Importances).
+   - Exported model artifacts (`xgboost_abuse_model.json`, `xgboost_abuse_model.pkl`) and runtime schema (`feature_metadata.json`).
 
-4. **Created isolated virtual environment** at `.venv/` and installed all dependencies
-
-5. **Updated `.gitignore`** with comprehensive exclusions:
-   - Python/venv, ML artifacts, IDE, OS files, logs, coverage
-
-6. **Created `RUNBOOK.md`** — Complete usage guide for the log parser
+4. **Documentation & Runbooks:**
+   - Created comprehensive `README.md` detailing end-to-end architecture, request lifecycle, and feature engineering.
+   - Updated `RUNBOOK.md`, `Phases.md` (Phase 1 100% complete), `Memory.md`, and `DEVLOG.md`.
 
 ### Files Modified/Created:
-- `data_pipeline/log_parser.py` — Multi-format parser with CLI
-- `requirements.txt` — New
-- `.gitignore` — Updated
-- `.venv/` — Created (gitignored)
-- `RUNBOOK.md` — New
-- `Memory.md` — Updated
-- `Phases.md` — Updated (Phase 1 tasks checked off)
+- `data_pipeline/generate_sample_logs.py` — New synthetic log generator
+- `data_pipeline/train_model.py` — New XGBoost model trainer
+- `data_pipeline/log_parser.py` — Optimized parser
+- `README.md` — Complete architecture & system documentation
+- `RUNBOOK.md` — Updated runbook with model training instructions
+- `Memory.md` — Updated state tracking
+- `Phases.md` — Checked off Phase 1 tasks
+- `DEVLOG.md` — Appended Session 2026-08-30
 
-### Next Immediate Tasks:
-1. Generate/download sample logs for all 3 formats (`data/raw/`)
-2. Test parser end-to-end: `python data_pipeline/log_parser.py ... --type apache_access|apache_error|linux`
-3. Implement `data_pipeline/train_model.py` for XGBoost baseline (Phase 1 task 4)
+### Next Immediate Tasks (Phase 2):
+1. Write `scripts/rate_limit.lua` implementing the Sliding Window Counter algorithm with Redis Sorted Sets (`ZSET`).
+2. Implement `backend/main.py` FastAPI reverse proxy with async Redis connection pooling.
+3. Integrate rate limiting middleware and error handling (`HTTP 429` / `HTTP 403`).

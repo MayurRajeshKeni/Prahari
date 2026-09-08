@@ -6,15 +6,15 @@
 *   [x] Clean data (handle missing values, drop low-variance columns).
 *   [x] Extract high-variance features (e.g., request velocity, URL path patterns, User-Agent anomalies).
 *   [x] **Extended parser to support Apache access, Apache error, and Linux syslog formats**
-*   [ ] Train an XGBoost baseline model on the processed dataset.
-*   [ ] Export the trained model as a `.json` or `.pkl` artifact.
+*   [x] Train an XGBoost baseline model on the processed dataset.
+*   [x] Export the trained model as a `.json` and `.pkl` artifact with feature metadata.
 
 ## Phase 2: Gateway Core & Distributed Concurrency
 **Goal:** Build the FastAPI reverse proxy and atomic rate limiter.
-*   [ ] Initialize FastAPI app with a catch-all route or specific dummy endpoints.
-*   [ ] Set up local Redis instance via Docker.
-*   [ ] Write the `rate_limit.lua` script implementing the Sliding Window Counter using Redis Sorted Sets.
-*   [ ] Integrate the Lua script execution into the FastAPI middleware/dependency injection.
+*   [x] Initialize FastAPI app with a catch-all route or specific dummy endpoints.
+*   [x] Write the `rate_limit.lua` script implementing the Sliding Window Counter using Redis Sorted Sets.
+*   [x] Integrate the Lua script execution into the FastAPI middleware/dependency injection.
+*   [ ] Set up local Redis instance via Docker / WSL for live system integration.
 
 ## Phase 3: ML Integration & Dynamic Mitigation
 **Goal:** Connect the ML model to the live traffic stream.
