@@ -1,7 +1,8 @@
 import time
 import uuid
+import math
 import logging
-from typing import Callable, Optional, Set
+from typing import Callable, Optional, Set, Dict
 from fastapi import Request, Response, HTTPException, status
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -10,6 +11,43 @@ from backend.config import settings
 from backend.redis_client.client import check_rate_limit
 
 logger = logging.getLogger("prahari.ratelimit")
+
+# In-memory short-circuit cache to protect Redis from thundering herds & connection stampedes
+# Maps client identifier -> unblock epoch timestamp in seconds
+_local_block_cache: Dict[str, float] = {}
+_MAX_LOCAL_BLOCK_ENTRIES = 10_000
+
+
+def _get_short_circuit_retry(identifier: str, current_time: float) -> Optional[int]:
+    """Check if identifier is locally blacklisted in memory, saving a Redis round trip."""
+    unblock_time = _local_block_cache.get(identifier)
+    if unblock_time is None:
+        return None
+    if current_time < unblock_time:
+        return max(1, math.ceil(unblock_time - current_time))
+    # Window passed; remove from short-circuit cache
+    _local_block_cache.pop(identifier, None)
+    return None
+
+
+def _record_short_circuit(identifier: str, retry_after: int, current_time: float) -> None:
+    """Record blocked client in local cache for retry_after seconds."""
+    if retry_after <= 0:
+        return
+    # Guard against unbounded memory growth under spoofed IP floods
+    if len(_local_block_cache) >= _MAX_LOCAL_BLOCK_ENTRIES:
+        expired_keys = [k for k, v in _local_block_cache.items() if v <= current_time]
+        for k in expired_keys:
+            _local_block_cache.pop(k, None)
+        if len(_local_block_cache) >= _MAX_LOCAL_BLOCK_ENTRIES:
+            _local_block_cache.clear()
+    _local_block_cache[identifier] = current_time + retry_after
+
+
+def clear_local_block_cache() -> None:
+    """Clear all local short-circuit entries (primarily for testing)."""
+    _local_block_cache.clear()
+
 
 # Paths that bypass rate limiting (health checks, schema, docs)
 EXEMPT_PATHS: Set[str] = {
@@ -68,7 +106,26 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         identifier = get_client_identifier(request)
-        now_ms = int(time.time() * 1000)
+        now_sec = time.time()
+
+        # In-memory short-circuit: immediately drop requests from blocked clients without Redis load
+        cached_retry = _get_short_circuit_retry(identifier, now_sec)
+        if cached_retry is not None:
+            return JSONResponse(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                content={
+                    "error": "Rate limit exceeded",
+                    "retry_after": cached_retry,
+                },
+                headers={
+                    "Retry-After": str(cached_retry),
+                    "X-RateLimit-Limit": str(self.max_requests),
+                    "X-RateLimit-Remaining": "0",
+                    "X-RateLimit-Reset": str(cached_retry),
+                },
+            )
+
+        now_ms = int(now_sec * 1000)
         member_id = f"{now_ms}:{uuid.uuid4().hex[:8]}"
 
         try:
@@ -87,6 +144,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return response
 
         if not allowed:
+            _record_short_circuit(identifier, retry_after, now_sec)
             logger.warning(
                 f"Rate limit exceeded for {identifier} on {request.method} {request.url.path}. "
                 f"Retry after: {retry_after}s"
@@ -125,7 +183,25 @@ async def rate_limit_dependency(
     window_ms = window_sec * 1000
 
     identifier = get_client_identifier(request)
-    now_ms = int(time.time() * 1000)
+    now_sec = time.time()
+
+    # In-memory short-circuit check
+    cached_retry = _get_short_circuit_retry(identifier, now_sec)
+    if cached_retry is not None:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={
+                "error": "Rate limit exceeded",
+                "retry_after": cached_retry,
+            },
+            headers={
+                "Retry-After": str(cached_retry),
+                "X-RateLimit-Limit": str(limit),
+                "X-RateLimit-Remaining": "0",
+            },
+        )
+
+    now_ms = int(now_sec * 1000)
     member_id = f"{now_ms}:{uuid.uuid4().hex[:8]}"
 
     allowed, remaining, retry_after = await check_rate_limit(
@@ -137,6 +213,7 @@ async def rate_limit_dependency(
     )
 
     if not allowed:
+        _record_short_circuit(identifier, retry_after, now_sec)
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail={

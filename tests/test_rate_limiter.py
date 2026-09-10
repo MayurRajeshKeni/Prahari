@@ -10,6 +10,7 @@ from backend.middleware.rate_limiter import (
     RateLimitMiddleware,
     get_client_identifier,
     EXEMPT_PATHS,
+    clear_local_block_cache,
 )
 from backend.routes.api import router as api_router
 from backend.redis_client.client import load_lua_script
@@ -56,13 +57,15 @@ class MockRedisRateLimiter:
 
 @pytest.fixture
 def mock_limiter(monkeypatch):
+    clear_local_block_cache()
     limiter = MockRedisRateLimiter()
 
     async def mock_check(identifier, now_ms, window_ms, limit, member_id):
         return await limiter.execute_lua(identifier, now_ms, window_ms, limit, member_id)
 
     monkeypatch.setattr("backend.middleware.rate_limiter.check_rate_limit", mock_check)
-    return limiter
+    yield limiter
+    clear_local_block_cache()
 
 
 @pytest.fixture
@@ -272,4 +275,42 @@ async def test_rate_limit_dependency_direct(mock_limiter):
     with pytest.raises(HTTPException) as exc_info:
         await rate_limit_dependency(req, max_requests=2, window_seconds=5)
     assert exc_info.value.status_code == 429
+
+
+def test_in_memory_short_circuit_defends_redis(client, monkeypatch):
+    """Verify that repeated requests while blocked are short-circuited in memory without Redis calls."""
+    headers = {"X-Forwarded-For": "10.99.88.77"}
+    call_count = 0
+
+    async def counting_check(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        # Allow first 3, then block
+        if call_count <= 3:
+            return (True, 3 - call_count, 0)
+        return (False, 0, 5)
+
+    monkeypatch.setattr("backend.middleware.rate_limiter.check_rate_limit", counting_check)
+
+    # 3 allowed requests
+    for _ in range(3):
+        res = client.get("/api/v1/ping", headers=headers)
+        assert res.status_code == 200
+
+    assert call_count == 3
+
+    # 4th request: hits rate limit, calls check_rate_limit (call_count -> 4), triggers in-memory blacklist
+    res4 = client.get("/api/v1/ping", headers=headers)
+    assert res4.status_code == 429
+    assert call_count == 4
+
+    # 5th, 6th, 7th requests (flood during retry window): MUST be served from local memory!
+    # call_count must remain 4 (no extra Redis calls)
+    for _ in range(3):
+        res_flood = client.get("/api/v1/ping", headers=headers)
+        assert res_flood.status_code == 429
+        assert "Retry-After" in res_flood.headers
+
+    assert call_count == 4, "Redis should not be called while client is locally short-circuited"
+
 

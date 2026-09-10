@@ -28,8 +28,8 @@ if current_requests < limit then
     -- Quota is available: Record current request timestamp into the ZSET
     redis.call('ZADD', key, now, member_id)
     
-    -- Refresh key expiration to ensure cleanup if client goes idle
-    redis.call('PEXPIRE', key, window_ms)
+    -- Refresh key expiration with 1000ms safety buffer to ensure cleanup if client goes idle
+    redis.call('PEXPIRE', key, window_ms + 1000)
     
     local remaining = limit - (current_requests + 1)
     return { 1, remaining, 0 }
@@ -48,6 +48,9 @@ else
             end
         end
     end
+
+    -- Keep key alive with buffer during rejection bursts to avoid premature eviction
+    redis.call('PEXPIRE', key, window_ms + 1000)
     
     return { 0, 0, retry_after_seconds }
 end

@@ -113,3 +113,33 @@ The naive way executes separate Redis commands (`ZREMRANGEBYSCORE`, then `ZCARD`
 
 **Q:** How does the gateway handle Redis outages or network partitions?  
 **A:** The middleware implements a fail-open pattern with an `X-RateLimit-Error: Service Degraded` header, ensuring critical backend availability is maintained during temporary datastore hiccups.
+
+---
+
+# Development Log - Session 2026-09-10
+
+## 1. What Was Built Today (High-Level Summary)
+Hardened the Sliding Window rate limiter infrastructure against cache stampedes, thundering herds, and Redis CPU saturation under high-velocity attacks:
+1. **Redis TTL Safety Buffer & Continuous Expiration (`scripts/rate_limit.lua`)**: Added a 1,000 ms safety buffer (`window_ms + 1000`) to `PEXPIRE` to protect against premature key eviction caused by clock drift or latency. Ensured `PEXPIRE` is invoked during both allowed and blocked request branches so active DDoS bursts don't let keys expire ungracefully.
+2. **In-Memory Short-Circuit Defense (`backend/middleware/rate_limiter.py`)**: Implemented local in-memory short-circuit caching (`_local_block_cache`) with bounded memory management (`_MAX_LOCAL_BLOCK_ENTRIES = 10,000`). Repeated requests from an already-blocked client during their `retry_after` window are immediately served `HTTP 429` from memory, eliminating redundant `EVALSHA` round-trips and protecting the Redis single thread from event loop saturation.
+3. **Comprehensive Test Suite Expansion (`tests/test_rate_limiter.py`)**: Added test coverage (`test_in_memory_short_circuit_defends_redis`) proving that flood requests during an active block are absorbed in memory without calling Redis. All 11 tests passing.
+
+## 2. Significance & Engineering Purpose
+While Redis is the primary state store (precluding traditional database cache miss stampedes), high-throughput gateways face adjacent risks:
+- **Connection & CPU Stampede on Redis:** A single abusive client sending 50,000 req/sec can saturate the Redis event loop, degrading latency for legitimate users across the system. Local in-memory short-circuiting drops these requests at wire speed in FastAPI memory.
+- **Clock Drift & Premature Eviction:** Setting TTL to exactly `window_ms` risks edge-case eviction while requests are still valid. A 1s buffer guarantees monotonic window integrity.
+
+## 3. Core Code Concepts Explained Simply
+
+**Key Functions/Methods:**
+- `_get_short_circuit_retry(identifier, now)` — Constant-time ($O(1)$) dictionary lookup in Python RAM to check if client is within an active block window.
+- `_record_short_circuit(identifier, retry_after, now)` — Records blocked client with TTL expiration and enforces maximum entry bounds to prevent memory bloat under spoofed IP attacks.
+- `clear_local_block_cache()` — Utility function for deterministic test teardown and cache eviction.
+
+## 4. Viva / Interview Quick-Check
+
+**Q:** Does a classic cache stampede happen in this rate limiter?  
+**A:** No. Redis is the primary datastore, not a cache in front of a slow SQL database. A missing key simply means the client was idle and is granted a new sliding window without triggering heavy downstream computations.
+
+**Q:** How does in-memory short-circuiting prevent Redis event loop starvation?  
+**A:** Once Redis rejects a client and assigns a `retry_after` duration, FastAPI caches that block timestamp locally in RAM. All subsequent burst requests from that client are rejected with HTTP 429 directly in Python, saving thousands of network calls and Lua executions on Redis.
